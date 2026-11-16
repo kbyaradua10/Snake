@@ -1,0 +1,474 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Snake Master</title>
+
+<style>
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: #07110d;
+  color: white;
+  font-family: Arial, sans-serif;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 18px;
+}
+
+.game {
+  width: 100%;
+  max-width: 430px;
+  text-align: center;
+}
+
+h1 {
+  color: #39ff88;
+  font-size: 32px;
+  margin: 5px 0;
+  letter-spacing: 2px;
+  text-shadow: 0 0 15px #19d96b;
+}
+
+.subtitle {
+  color: #91aa9b;
+  font-size: 13px;
+  margin-bottom: 20px;
+}
+
+.scores {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.score-box {
+  flex: 1;
+  background: #10251a;
+  border: 1px solid #245b3b;
+  border-radius: 12px;
+  padding: 12px 5px;
+}
+
+.score-box small {
+  display: block;
+  color: #9bb7a5;
+  font-size: 11px;
+  margin-bottom: 5px;
+}
+
+.score-box strong {
+  color: #39ff88;
+  font-size: 24px;
+}
+
+canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+  background: #09170f;
+  border: 2px solid #28e879;
+  border-radius: 12px;
+  box-shadow: 0 0 22px #16a65355;
+  touch-action: none;
+}
+
+.controls {
+  display: flex;
+  gap: 10px;
+  margin-top: 15px;
+}
+
+button, select {
+  border: 1px solid #2d8050;
+  border-radius: 10px;
+  background: #123321;
+  color: white;
+  padding: 13px 10px;
+  font-size: 14px;
+  font-weight: bold;
+}
+
+button {
+  flex: 1;
+  cursor: pointer;
+}
+
+button:active {
+  background: #1c7540;
+}
+
+select {
+  width: 100%;
+  margin-bottom: 12px;
+  outline: none;
+}
+
+#message {
+  color: #b9d9c5;
+  font-size: 14px;
+  min-height: 22px;
+  margin-top: 14px;
+}
+
+.tip {
+  color: #82998a;
+  font-size: 12px;
+  margin-top: 12px;
+}
+</style>
+</head>
+
+<body>
+<div class="game">
+
+  <h1>🐍 SNAKE MASTER</h1>
+  <div class="subtitle">Swipe. Survive. Beat Your Record.</div>
+
+  <div class="scores">
+    <div class="score-box">
+      <small>CURRENT SCORE</small>
+      <strong id="score">0</strong>
+    </div>
+    <div class="score-box">
+      <small>HIGH SCORE</small>
+      <strong id="highScore">0</strong>
+    </div>
+  </div>
+
+  <select id="difficulty">
+    <option value="180">Easy</option>
+    <option value="125" selected>Medium</option>
+    <option value="85">Hard</option>
+    <option value="55">Expert</option>
+  </select>
+
+  <canvas id="board" width="380" height="380"></canvas>
+
+  <div class="controls">
+    <button id="pauseBtn">⏸ Pause</button>
+    <button id="restartBtn">↻ Restart</button>
+  </div>
+
+  <div id="message">Swipe on the board to start playing!</div>
+  <div class="tip">Swipe up, down, left or right to control your snake.</div>
+
+</div>
+
+<script>
+const canvas = document.getElementById("board");
+const ctx = canvas.getContext("2d");
+
+const scoreText = document.getElementById("score");
+const highScoreText = document.getElementById("highScore");
+const message = document.getElementById("message");
+const difficulty = document.getElementById("difficulty");
+const pauseBtn = document.getElementById("pauseBtn");
+
+const tile = 20;
+const cells = canvas.width / tile;
+
+let snake;
+let food;
+let score;
+let highScore = Number(localStorage.getItem("snakeMasterHighScore")) || 0;
+
+let dx;
+let dy;
+let nextDx;
+let nextDy;
+
+let running = false;
+let paused = false;
+let gameOver = false;
+let turnQueued = false;
+let timer = null;
+
+let swipeStartX = 0;
+let swipeStartY = 0;
+
+highScoreText.textContent = highScore;
+
+function startGame() {
+  clearInterval(timer);
+
+  snake = [
+    { x: 9, y: 9 },
+    { x: 8, y: 9 },
+    { x: 7, y: 9 }
+  ];
+
+  dx = 1;
+  dy = 0;
+  nextDx = 1;
+  nextDy = 0;
+
+  score = 0;
+  running = true;
+  paused = false;
+  gameOver = false;
+  turnQueued = false;
+
+  scoreText.textContent = score;
+  message.textContent = "Swipe in any direction to turn!";
+  pauseBtn.textContent = "⏸ Pause";
+
+  createFood();
+  draw();
+
+  timer = setInterval(update, Number(difficulty.value));
+}
+
+function createFood() {
+  let position;
+
+  do {
+    position = {
+      x: Math.floor(Math.random() * cells),
+      y: Math.floor(Math.random() * cells)
+    };
+  } while (snake.some(part =>
+    part.x === position.x && part.y === position.y
+  ));
+
+  food = position;
+}
+
+function draw() {
+  ctx.fillStyle = "#09170f";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  // Grid
+  ctx.strokeStyle = "#13291c";
+  ctx.lineWidth = 1;
+
+  for (let i = 0; i <= canvas.width; i += tile) {
+    ctx.beginPath();
+    ctx.moveTo(i, 0);
+    ctx.lineTo(i, canvas.height);
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.moveTo(0, i);
+    ctx.lineTo(canvas.width, i);
+    ctx.stroke();
+  }
+
+  // Food
+  ctx.fillStyle = "#ff405d";
+  ctx.shadowColor = "#ff405d";
+  ctx.shadowBlur = 12;
+  ctx.beginPath();
+  ctx.arc(
+    food.x * tile + tile / 2,
+    food.y * tile + tile / 2,
+    tile / 2.8,
+    0,
+    Math.PI * 2
+  );
+  ctx.fill();
+  ctx.shadowBlur = 0;
+
+  // Snake
+  snake.forEach((part, index) => {
+    ctx.fillStyle = index === 0 ? "#75ff9c" : "#20c968";
+    ctx.shadowColor = "#25ff83";
+    ctx.shadowBlur = index === 0 ? 12 : 4;
+
+    ctx.fillRect(
+      part.x * tile + 2,
+      part.y * tile + 2,
+      tile - 4,
+      tile - 4
+    );
+  });
+
+  ctx.shadowBlur = 0;
+
+  if (paused || gameOver) {
+    ctx.fillStyle = "rgba(0,0,0,0.65)";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    ctx.fillStyle = gameOver ? "#ff526b" : "#39ff88";
+    ctx.font = "bold 30px Arial";
+    ctx.textAlign = "center";
+    ctx.fillText(
+      gameOver ? "GAME OVER" : "PAUSED",
+      canvas.width / 2,
+      canvas.height / 2
+    );
+  }
+}
+
+function updateHighScore() {
+  if (score > highScore) {
+    highScore = score;
+    localStorage.setItem("snakeMasterHighScore", highScore);
+    highScoreText.textContent = highScore;
+  }
+}
+
+function update() {
+  if (!running || paused || gameOver) return;
+
+  if (turnQueued) {
+    dx = nextDx;
+    dy = nextDy;
+    turnQueued = false;
+  }
+
+  const head = {
+    x: snake[0].x + dx,
+    y: snake[0].y + dy
+  };
+
+  // Wall collision
+  if (
+    head.x < 0 ||
+    head.y < 0 ||
+    head.x >= cells ||
+    head.y >= cells
+  ) {
+    endGame();
+    return;
+  }
+
+  const eating = head.x === food.x && head.y === food.y;
+
+  // Allow moving into the old tail position if the tail moves away
+  const bodyToCheck = eating ? snake : snake.slice(0, -1);
+
+  if (bodyToCheck.some(part =>
+    part.x === head.x && part.y === head.y
+  )) {
+    endGame();
+    return;
+  }
+
+  snake.unshift(head);
+
+  if (eating) {
+    score += 10;
+    scoreText.textContent = score;
+
+    updateHighScore();
+    createFood();
+  } else {
+    snake.pop();
+  }
+
+  draw();
+}
+
+function endGame() {
+  running = false;
+  gameOver = true;
+  clearInterval(timer);
+  updateHighScore();
+  message.textContent = "Game over! Press Restart to play again.";
+  draw();
+}
+
+function changeDirection(newDx, newDy) {
+  if (!running || paused || gameOver || turnQueued) return;
+
+  // Never allow an immediate 180-degree turn
+  if (newDx === -dx && newDy === -dy) return;
+
+  nextDx = newDx;
+  nextDy = newDy;
+  turnQueued = true;
+}
+
+function handleSwipe(startX, startY, endX, endY) {
+  const diffX = endX - startX;
+  const diffY = endY - startY;
+
+  if (Math.max(Math.abs(diffX), Math.abs(diffY)) < 18) return;
+
+  if (Math.abs(diffX) > Math.abs(diffY)) {
+    if (diffX > 0) {
+      changeDirection(1, 0);
+    } else {
+      changeDirection(-1, 0);
+    }
+  } else {
+    if (diffY > 0) {
+      changeDirection(0, 1);
+    } else {
+      changeDirection(0, -1);
+    }
+  }
+}
+
+// Mobile swipe controls
+canvas.addEventListener("pointerdown", function(event) {
+  swipeStartX = event.clientX;
+  swipeStartY = event.clientY;
+
+  if (canvas.setPointerCapture) {
+    canvas.setPointerCapture(event.pointerId);
+  }
+});
+
+canvas.addEventListener("pointerup", function(event) {
+  handleSwipe(
+    swipeStartX,
+    swipeStartY,
+    event.clientX,
+    event.clientY
+  );
+});
+
+// Desktop keyboard controls
+document.addEventListener("keydown", function(event) {
+  const keys = {
+    ArrowUp: [0, -1],
+    ArrowDown: [0, 1],
+    ArrowLeft: [-1, 0],
+    ArrowRight: [1, 0],
+    w: [0, -1],
+    s: [0, 1],
+    a: [-1, 0],
+    d: [1, 0]
+  };
+
+  if (keys[event.key]) {
+    event.preventDefault();
+    changeDirection(keys[event.key][0], keys[event.key][1]);
+  }
+});
+
+function togglePause() {
+  if (gameOver || !running) return;
+
+  paused = !paused;
+  pauseBtn.textContent = paused ? "▶ Resume" : "⏸ Pause";
+
+  message.textContent = paused ? "Game paused." : "Keep playing!";
+  draw();
+}
+
+pauseBtn.addEventListener("click", togglePause);
+
+document.getElementById("restartBtn").addEventListener("click", startGame);
+
+difficulty.addEventListener("change", function() {
+  if (running) {
+    clearInterval(timer);
+    timer = setInterval(update, Number(difficulty.value));
+  }
+});
+
+startGame();
+</script>
+</body>
+</html>
